@@ -7,23 +7,40 @@ import Lesson from "./pages/Lesson";
 import Quiz from "./pages/Quiz";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
+import AppProvider, { useApp } from "./context/AppContext";
+
+function Protected({ children }){
+  const { user } = useApp();
+  if (!user) return <Navigate to="/sign" replace />;
+  return children;
+}
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
-      <main className="flex-1">
-        <Routes>
-          <Route path="/" element={<Navigate to="/sign" replace />} />
-          <Route path="/sign" element={<Sign />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/lesson" element={<Lesson />} />
-          <Route path="/quiz" element={<Quiz />} />
-          <Route path="/admin" element={<Admin />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </main>
-      <Footer />
-    </div>
+    <AppProvider>
+      <div className="min-h-screen flex flex-col bg-gray-50 text-gray-900 transition-colors dark:bg-gray-950 dark:text-gray-100">
+        <Navbar />
+        <main className="flex-1">
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/sign" element={<Sign />} />
+            <Route path="/dashboard" element={
+              <Protected><Dashboard /></Protected>
+            } />
+            <Route path="/lesson" element={
+              <Protected><Lesson /></Protected>
+            } />
+            <Route path="/quiz" element={
+              <Protected><Quiz /></Protected>
+            } />
+            <Route path="/admin" element={
+              <Protected><Admin /></Protected>
+            } />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </main>
+        <Footer />
+      </div>
+    </AppProvider>
   );
 }

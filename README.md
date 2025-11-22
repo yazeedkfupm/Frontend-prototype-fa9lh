@@ -14,6 +14,8 @@ Quiz flow (question feedback, progress bar, summary tiles)
 
 Admin console (overview metrics, user list, content approvals)
 
+Dark mode toggle (persisted per user) — icon next to the Sign out button with auto detection of system preference
+
 Create React App (React 18, React Router 6)
 
 Tailwind CSS via PostCSS
@@ -43,6 +45,7 @@ src/
   components/
     Footer.jsx
     Navbar.jsx
+    ProfileMenu.jsx
   context/
     AppContext.jsx
   pages/
@@ -64,6 +67,7 @@ postcss.config.js
 
 ## Notes
 - Static UI with light interactivity for demos (quiz selection, progress visuals).
+- Dark mode preference is stored in localStorage (`fa9lh:theme`) and also respects `prefers-color-scheme` on first load.
 
 Team Members & Roles
 
