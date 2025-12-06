@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useApp } from "../context/AppContext";
 
 const navItems = [
   "Overview",
@@ -9,23 +10,38 @@ const navItems = [
   "Security",
 ];
 
-const userSeed = [
-  { id: 1, name: "Sarah Johnson", email: "sarah@example.com", status: "Active" },
-  { id: 2, name: "Mike Chen", email: "mike@example.com", status: "Pending" },
-  { id: 3, name: "Emma Davis", email: "emma@example.com", status: "Suspended" },
-];
-
-const approvalSeed = [
-  { id: 1, author: "Alex Kumar", type: "Article", submitted: "2 hours ago" },
-  { id: 2, author: "Lisa Wong", type: "Video", submitted: "4 hours ago" },
-];
-
 export default function Admin() {
+  const { api, user } = useApp();
   const [activeNav, setActiveNav] = useState(navItems[0]);
-  const [users, setUsers] = useState(userSeed);
-  const [approvals, setApprovals] = useState(approvalSeed);
+  const [users, setUsers] = useState([]);
+  const [approvals, setApprovals] = useState([]);
   const [serverOnline, setServerOnline] = useState(true);
   const [notification, setNotification] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [actionPending, setActionPending] = useState(false);
+
+  const loadAdminData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [userPayload, approvalPayload] = await Promise.all([
+        api("/admin/users"),
+        api("/admin/approvals"),
+      ]);
+      setUsers(userPayload.users);
+      setApprovals(approvalPayload.approvals);
+    } catch (err) {
+      setError(err.message || "Failed to load admin data");
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    loadAdminData();
+  }, [user, loadAdminData]);
 
   useEffect(() => {
     if (!notification) return;
@@ -56,22 +72,41 @@ export default function Admin() {
     },
   ]), [users, approvals, serverOnline]);
 
-  function cycleUserStatus(id){
+  async function cycleUserStatus(id){
+    const target = users.find((user) => user.id === id);
+    if (!target) return;
     const order = ["Active", "Pending", "Suspended"];
-    setUsers((prev) => prev.map((user) => {
-      if (user.id !== id) return user;
-      const idx = order.indexOf(user.status);
-      const next = order[(idx + 1) % order.length];
-      setNotification(`${user.name} marked as ${next}`);
-      return { ...user, status: next };
-    }));
+    const idx = order.indexOf(target.status);
+    const next = order[(idx + 1) % order.length];
+    setActionPending(true);
+    try {
+      const response = await api(`/admin/users/${id}`, {
+        method: "PATCH",
+        body: { status: next },
+      });
+      setUsers((prev) => prev.map((user) => (user.id === id ? response.user : user)));
+      setNotification(`${response.user.name} marked as ${next}`);
+    } catch (err) {
+      setNotification(err.message || "Unable to update user");
+    } finally {
+      setActionPending(false);
+    }
   }
 
-  function handleDecision(id, decision){
-    const item = approvals.find((ap) => ap.id === id);
-    if (!item) return;
-    setApprovals((prev) => prev.filter((ap) => ap.id !== id));
-    setNotification(`${item.author}'s ${item.type.toLowerCase()} ${decision}.`);
+  async function handleDecision(id, decision){
+    setActionPending(true);
+    try {
+      const response = await api(`/admin/approvals/${id}/decision`, {
+        method: "POST",
+        body: { decision },
+      });
+      setApprovals((prev) => prev.filter((item) => item.id !== Number(id)));
+      setNotification(response.message);
+    } catch (err) {
+      setNotification(err.message || "Unable to update approval");
+    } finally {
+      setActionPending(false);
+    }
   }
 
   return (
@@ -81,6 +116,20 @@ export default function Admin() {
           {notification}
         </div>
       )}
+      {user?.role !== "admin" ? (
+        <div className="md:col-span-2 text-center py-10">
+          <p className="text-lg font-semibold">Admin access required</p>
+          <p className="text-sm text-gray-500 mt-2">Sign in with an administrator account to manage the platform.</p>
+        </div>
+      ) : loading ? (
+        <div className="md:col-span-2 text-center py-10 text-sm text-gray-500">Loading admin data…</div>
+      ) : error ? (
+        <div className="md:col-span-2 text-center py-10">
+          <p className="text-red-600">{error}</p>
+          <button className="btn mt-4" onClick={loadAdminData}>Retry</button>
+        </div>
+      ) : (
+        <>
       <aside className="card p-3">
         <div className="font-semibold mb-3">Dashboard</div>
         <nav className="space-y-1 text-sm">
@@ -125,17 +174,21 @@ export default function Admin() {
               <button className="btn btn-ghost text-xs" onClick={()=>setNotification('Full roster coming soon')}>View All</button>
             </div>
             <div className="space-y-2 text-sm">
-              {users.map((user)=>(
-                <div key={user.id} className="border rounded-lg p-3 flex items-center justify-between">
+              {users.map((entry)=>(
+                <div key={entry.id} className="border rounded-lg p-3 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="h-8 w-8 rounded-full bg-gray-200 grid place-items-center">👤</span>
                     <div>
-                      <div className="font-medium">{user.name}</div>
-                      <div className="text-xs text-gray-500">{user.email}</div>
+                      <div className="font-medium">{entry.name}</div>
+                      <div className="text-xs text-gray-500">{entry.email}</div>
                     </div>
                   </div>
-                  <button className="text-xs border rounded-full px-2 py-1" onClick={()=>cycleUserStatus(user.id)}>
-                    {user.status}
+                  <button
+                    className="text-xs border rounded-full px-2 py-1"
+                    onClick={()=>cycleUserStatus(entry.id)}
+                    disabled={actionPending}
+                  >
+                    {entry.status}
                   </button>
                 </div>
               ))}
@@ -165,8 +218,8 @@ export default function Admin() {
                   </div>
                   <div className="mt-3 h-24 bg-gray-100 rounded-lg grid place-items-center text-gray-500">Preview</div>
                   <div className="mt-3 flex gap-2">
-                    <button className="btn btn-primary" onClick={()=>handleDecision(item.id, 'approved')}>✓ Approve</button>
-                    <button className="btn" onClick={()=>handleDecision(item.id, 'rejected')}>✕ Reject</button>
+                    <button className="btn btn-primary" onClick={()=>handleDecision(item.id, 'approved')} disabled={actionPending}>✓ Approve</button>
+                    <button className="btn" onClick={()=>handleDecision(item.id, 'rejected')} disabled={actionPending}>✕ Reject</button>
                   </div>
                 </div>
               ))}
@@ -174,6 +227,8 @@ export default function Admin() {
           </div>
         </section>
       </main>
+        </>
+      )}
     </div>
   );
 }

@@ -1,10 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
 
-const LS_KEY = "fa9lh:user";
+const SESSION_KEY = "fa9lh:session";
 const THEME_KEY = "fa9lh:theme";
+const API_ROOT = (process.env.REACT_APP_API_URL || "http://localhost:4000").replace(/\/$/, "");
+const API_BASE = `${API_ROOT}/api`;
 
 function getPreferredTheme(){
   if (typeof window === "undefined") return "light";
@@ -16,24 +18,55 @@ function getPreferredTheme(){
   return prefersDark ? "dark" : "light";
 }
 
+function getStoredSession(){
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function http(path, options = {}, token){
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${API_BASE}${normalizedPath}`;
+  const config = {
+    method: options.method || (options.body ? "POST" : "GET"),
+    headers: new Headers(options.headers || {}),
+    credentials: options.credentials || "include",
+  };
+  if (!(options.body instanceof FormData) && options.body && typeof options.body === "object" && !options.rawBody){
+    config.headers.set("Content-Type", "application/json");
+    config.body = JSON.stringify(options.body);
+  } else if (options.body){
+    config.body = options.body;
+  }
+  config.headers.set("Accept", "application/json");
+  if (token){
+    config.headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(url, config);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok){
+    const error = new Error(data.message || "Request failed");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
 export default function AppProvider({ children }){
-  const [user, setUser] = useState(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [session, setSession] = useState(getStoredSession);
   const [theme, setTheme] = useState(getPreferredTheme);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem(LS_KEY, JSON.stringify(user));
+    if (session){
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     } else {
-      localStorage.removeItem(LS_KEY);
+      localStorage.removeItem(SESSION_KEY);
     }
-  }, [user]);
+  }, [session]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -43,55 +76,77 @@ export default function AppProvider({ children }){
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
+  const token = session?.token;
+
+  useEffect(() => {
+    let mounted = true;
+    async function hydrate(){
+      if (!token){
+        setReady(true);
+        return;
+      }
+      try {
+        const result = await http("/auth/me", {}, token);
+        if (mounted){
+          setSession((prev) => (prev ? { ...prev, user: result.user } : { token, user: result.user }));
+        }
+      } catch {
+        if (mounted){
+          setSession(null);
+        }
+      } finally {
+        if (mounted){
+          setReady(true);
+        }
+      }
+    }
+    hydrate();
+    return () => {
+      mounted = false;
+    };
+  }, [token]);
+
   function toggleTheme(){
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   }
 
-  // very lightweight "auth" simulation
-  function fakeNetwork(delay=800){
-    return new Promise((res) => setTimeout(res, delay));
-  }
+  const api = useCallback((path, options = {}) => http(path, options, token), [token]);
 
-  async function signIn({ email, password }){
-    await fakeNetwork();
-    // In a real app, you'd call your API. Here we succeed if password length >= 6
-    if (!email || !password || password.length < 6){
-      throw new Error("Invalid credentials");
-    }
-    const profile = { id: email, name: email.split("@")[0], email };
-    setUser(profile);
-    return profile;
-  }
+  const signIn = useCallback(async ({ email, password }) => {
+    const payload = await http("/auth/signin", { method: "POST", body: { email, password } });
+    setSession(payload);
+    return payload.user;
+  }, []);
 
-  async function signUp({ name, email, password }){
-    await fakeNetwork();
-    if (!name || name.length < 2){
-      throw new Error("Please enter your full name");
-    }
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
-      throw new Error("Please enter a valid email");
-    }
-    if (!password || password.length < 6){
-      throw new Error("Password must be at least 6 characters");
-    }
-    const profile = { id: email, name, email };
-    setUser(profile);
-    return profile;
-  }
+  const signUp = useCallback(async ({ name, email, password }) => {
+    const payload = await http("/auth/signup", { method: "POST", body: { name, email, password } });
+    setSession(payload);
+    return payload.user;
+  }, []);
 
-  function signOut(){
-    setUser(null);
-  }
+  const signOut = useCallback(async () => {
+    try {
+      if (token){
+        await http("/auth/signout", { method: "POST" }, token);
+      }
+    } catch {
+      // ignore network errors on sign-out
+    } finally {
+      setSession(null);
+    }
+  }, [token]);
 
   const value = useMemo(() => ({
-    user,
-    setUser,
+    user: session?.user || null,
+    token,
     signIn,
     signUp,
     signOut,
     theme,
     toggleTheme,
-  }), [user, theme]);
+    api,
+    ready,
+  }), [session, token, signIn, signUp, signOut, theme, api, ready]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

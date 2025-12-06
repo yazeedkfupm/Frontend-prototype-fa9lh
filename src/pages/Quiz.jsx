@@ -1,82 +1,117 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useApp } from "../context/AppContext";
 
-const questions = [
-  {
-    id: 1,
-    prompt: "Which of the following is the correct way to declare a variable in JavaScript?",
-    options: ["variable x = 10;","let x = 10;","x := 10;","declare x = 10;"],
-    answer: 1,
-    explanation: "In JavaScript, use let/const/var. let is preferred for reassignable variables.",
-    correctFeedback: "Correct! “let” is a valid declaration keyword.",
-    incorrectFeedback: "Incorrect. Only let/const/var work in modern JavaScript.",
-  },
-  {
-    id: 2,
-    prompt: "Which method converts JSON text into a JavaScript object?",
-    options: ["JSON.stringify","JSON.parse","Object.fromJSON","JSON.toObject"],
-    answer: 1,
-    explanation: "JSON.parse converts JSON strings into objects.",
-    correctFeedback: "Correct! JSON.parse reads JSON text and returns objects.",
-    incorrectFeedback: "Incorrect. JSON.stringify turns objects into strings, the opposite direction.",
-  },
-  {
-    id: 3,
-    prompt: "What keyword declares a variable whose value cannot be reassigned?",
-    options: ["let","var","const","static"],
-    answer: 2,
-    explanation: "const creates a read-only binding to the value.",
-    correctFeedback: "Correct! const prevents reassignment of the binding.",
-    incorrectFeedback: "Incorrect. Remember that const locks the identifier to its initial value.",
-  },
-];
+const QUIZ_ID = "quiz-js-fundamentals";
 
 export default function Quiz() {
+  const { api } = useApp();
+  const [quiz, setQuiz] = useState(null);
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [status, setStatus] = useState("in-progress"); // in-progress | completed
+  const [status, setStatus] = useState("in-progress");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [serverSummary, setServerSummary] = useState({ correct: 0, incorrect: 0, accuracy: 0 });
 
-  const active = questions[current];
-  const progress = ((current + 1) / questions.length) * 100;
+  const loadQuiz = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = await api(`/quizzes/${QUIZ_ID}`);
+      setQuiz(payload.quiz);
+    } catch (err) {
+      setError(err.message || "Failed to load quiz");
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
 
-  const summary = useMemo(() => {
-    const correct = Object.entries(answers).filter(([id, choice]) => {
-      const q = questions.find((qs) => String(qs.id) === id);
-      return q && q.answer === choice;
-    }).length;
+  useEffect(() => {
+    loadQuiz();
+  }, [loadQuiz]);
+
+  const active = quiz?.questions[current];
+  const progress = quiz ? ((current + 1) / quiz.questions.length) * 100 : 0;
+
+  const derivedSummary = useMemo(() => {
+    if (!quiz) return { correct: 0, incorrect: 0, accuracy: 0 };
+    const correct = quiz.questions.filter((question) => answers[question.id] === question.answer).length;
     const attempted = Object.keys(answers).length;
     const incorrect = Math.max(0, attempted - correct);
     const accuracy = attempted ? Math.round((correct / attempted) * 100) : 0;
     return { correct, incorrect, accuracy };
-  }, [answers]);
+  }, [answers, quiz]);
+
+  const summary = status === "completed" ? serverSummary : derivedSummary;
 
   function selectChoice(optionIndex){
-    if (status === "completed") return;
+    if (status === "completed" || !active) return;
     setAnswers((prev) => ({ ...prev, [active.id]: optionIndex }));
   }
 
   function goToQuestion(step){
-    setCurrent((prev) => Math.max(0, Math.min(questions.length - 1, prev + step)));
+    if (!quiz) return;
+    setCurrent((prev) => Math.max(0, Math.min(quiz.questions.length - 1, prev + step)));
   }
 
   function skipQuestion(){
     goToQuestion(1);
   }
 
-  function finishQuiz(){
-    setStatus("completed");
+  async function finishQuiz(){
+    if (!quiz || status === "completed") return;
+    setError(null);
+    try {
+      const response = await api(`/quizzes/${QUIZ_ID}/submit`, {
+        method: "POST",
+        body: { answers },
+      });
+      setServerSummary(response.summary);
+    } catch (err) {
+      setServerSummary({ correct: 0, incorrect: 0, accuracy: 0 });
+      setError(err.message || "Unable to submit quiz");
+    } finally {
+      setStatus("completed");
+    }
+  }
+
+  if (loading){
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-8 text-center text-sm text-gray-500">
+        Loading quiz…
+      </div>
+    );
+  }
+
+  if (error && !quiz){
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-8 text-center">
+        <p className="text-red-600">{error}</p>
+        <button className="btn mt-4" onClick={loadQuiz}>Retry</button>
+      </div>
+    );
+  }
+
+  if (!quiz || !active){
+    return null;
   }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <button className="text-sm underline mb-4">← Back to Quizzes</button>
+      {error && (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
       <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
         <div className="h-full bg-black" style={{width:`${progress}%`}} />
       </div>
-      <h1 className="text-2xl font-bold mt-4">JavaScript Fundamentals</h1>
-      <p className="text-gray-600">Test your knowledge of JavaScript basics</p>
+      <h1 className="text-2xl font-bold mt-4">{quiz.title}</h1>
+      <p className="text-gray-600">{quiz.description}</p>
 
       <section className="mt-6 card p-4">
-        <div className="text-sm text-gray-500">Question {current + 1} of {questions.length}</div>
+        <div className="text-sm text-gray-500">Question {current + 1} of {quiz.questions.length}</div>
         <div className="font-medium mt-2">{active.prompt}</div>
         <div className="mt-3 space-y-2">
           {active.options.map((option, index) => {
@@ -114,8 +149,8 @@ export default function Quiz() {
         <div className="mt-4 flex items-center justify-between">
           <button className="btn" onClick={()=>goToQuestion(-1)} disabled={current===0}>← Previous</button>
           <div className="flex gap-2">
-            <button className="btn" onClick={skipQuestion} disabled={current===questions.length-1}>Skip Question</button>
-            {current === questions.length - 1 ? (
+            <button className="btn" onClick={skipQuestion} disabled={current===quiz.questions.length-1}>Skip Question</button>
+            {current === quiz.questions.length - 1 ? (
               <button className="btn btn-primary" onClick={finishQuiz} disabled={status==='completed'}>
                 {status==='completed' ? 'Quiz Completed' : 'Finish Quiz'}
               </button>

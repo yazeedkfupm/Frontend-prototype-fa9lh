@@ -1,138 +1,32 @@
-import { useEffect, useMemo, useState } from "react";
-
-const courseSeed = [
-  {
-    id: 1,
-    title: "JavaScript Fundamentals",
-    desc: "Chapter 5: Functions and Scope",
-    lessons: [
-      { id: "js-l1", title: "Function Basics", done: true },
-      { id: "js-l2", title: "Scope & Hoisting", done: true },
-      { id: "js-l3", title: "Arrow Functions", done: true },
-      { id: "js-l4", title: "Closures in Practice", done: false },
-    ],
-    quizzes: [
-      { id: "js-q1", title: "Functions Mid-check", done: false },
-      { id: "js-q2", title: "Scope Challenge", done: true },
-    ],
-  },
-  {
-    id: 2,
-    title: "UI/UX Design Principles",
-    desc: "Module 3: Color Theory",
-    lessons: [
-      { id: "ux-l1", title: "Color Psychology", done: true },
-      { id: "ux-l2", title: "Contrast & Accessibility", done: false },
-      { id: "ux-l3", title: "Building Palettes", done: false },
-    ],
-    quizzes: [
-      { id: "ux-q1", title: "Palette Quiz", done: false },
-      { id: "ux-q2", title: "Accessibility Check", done: false },
-    ],
-  },
-  {
-    id: 3,
-    title: "Backend Foundations",
-    desc: "REST APIs and Databases",
-    lessons: [
-      { id: "be-l1", title: "RESTful Concepts", done: true },
-      { id: "be-l2", title: "Designing Endpoints", done: false },
-      { id: "be-l3", title: "Persistent Storage", done: false },
-    ],
-    quizzes: [
-      { id: "be-q1", title: "HTTP Status Quiz", done: false },
-    ],
-  },
-];
-
-const topicSeed = [
-  {
-    id: 1,
-    name: "Web Development",
-    courses: 18,
-    lessons: ["Modern HTML", "Responsive Layouts", "Intro to React"],
-    quizzes: ["Flexbox", "React Basics"],
-  },
-  {
-    id: 2,
-    name: "Mobile Development",
-    courses: 14,
-    lessons: ["Flutter Widgets", "SwiftUI Essentials"],
-    quizzes: ["Layouts", "Navigation"],
-  },
-  {
-    id: 3,
-    name: "Data Science",
-    courses: 21,
-    lessons: ["Data Cleaning", "Exploratory Analysis", "Model Evaluation"],
-    quizzes: ["Pandas", "Probability"],
-  },
-  {
-    id: 4,
-    name: "Design",
-    courses: 16,
-    lessons: ["Typography", "Color Theory", "Visual Hierarchy"],
-    quizzes: ["Accessibility", "Visual Tests"],
-  },
-  {
-    id: 5,
-    name: "Cybersecurity",
-    courses: 12,
-    lessons: ["Threat Modeling", "Secure Auth"],
-    quizzes: ["OWASP Top 10"],
-  },
-  {
-    id: 6,
-    name: "AI & ML",
-    courses: 19,
-    lessons: ["Supervised Learning", "Model Deployment"],
-    quizzes: ["ML Concepts", "Bias Detection"],
-  },
-];
-
-const recommendationsSeed = [
-  {
-    id: 1,
-    label: "React Advanced Patterns",
-    meta: "4.8★ • 12h",
-    lessons: ["Render Props", "Compound Components"],
-    quizzes: ["Hooks Deep Dive"],
-    started: false,
-  },
-  {
-    id: 2,
-    label: "Node.js Backend",
-    meta: "4.9★ • 16h",
-    lessons: ["API Hardening", "Streaming"],
-    quizzes: ["Event Loop", "Scaling"],
-    started: false,
-  },
-];
-
-const activitySeed = [
-  { id: 1, text: "Completed \"Arrays and Objects\" lesson", when: "2 hours ago" },
-  { id: 2, text: "Earned \"JavaScript Basics\" certificate", when: "1 day ago" },
-  { id: 3, text: "Started \"UI Design Fundamentals\"", when: "3 days ago" },
-];
-
-const TOTAL_TRACKED_COURSES = 12;
-const BASE_COMPLETED = 5;
-
-const withProgress = (course) => {
-  const totalUnits = course.lessons.length + course.quizzes.length;
-  const doneUnits =
-    course.lessons.filter((lesson) => lesson.done).length +
-    course.quizzes.filter((quiz) => quiz.done).length;
-  const pct = totalUnits ? Math.round((doneUnits / totalUnits) * 100) : 0;
-  return { ...course, pct };
-};
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useApp } from "../context/AppContext";
 
 export default function Dashboard() {
-  const [courses, setCourses] = useState(courseSeed.map(withProgress));
-  const [activeTopicId, setActiveTopicId] = useState(topicSeed[0].id);
-  const [recommendations, setRecommendations] = useState(recommendationsSeed);
-  const [activities, setActivities] = useState(activitySeed);
+  const { api } = useApp();
+  const [data, setData] = useState(null);
+  const [activeTopicId, setActiveTopicId] = useState(null);
   const [notification, setNotification] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [actionPending, setActionPending] = useState(false);
+
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = await api("/dashboard");
+      setData(payload);
+      setActiveTopicId((prev) => prev ?? payload.topics?.[0]?.id ?? null);
+    } catch (err) {
+      setError(err.message || "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   useEffect(() => {
     if (!notification) return;
@@ -140,9 +34,15 @@ export default function Dashboard() {
     return () => clearTimeout(id);
   }, [notification]);
 
+  const courses = data?.courses || [];
+  const topics = data?.topics || [];
+  const recommendations = data?.recommendations || [];
+  const activities = data?.activities || [];
+  const stats = data?.stats || { courses: "0/0", hours: "0h", certificates: 0 };
+
   const activeTopic = useMemo(
-    () => topicSeed.find((topic) => topic.id === activeTopicId),
-    [activeTopicId]
+    () => topics.find((topic) => topic.id === activeTopicId),
+    [topics, activeTopicId]
   );
 
   const overallProgress = useMemo(() => {
@@ -151,148 +51,95 @@ export default function Dashboard() {
     return Math.round(totalPct / courses.length);
   }, [courses]);
 
-  const stats = useMemo(() => {
-    const completedVisible = courseSeed.length - courses.length;
-    const completed = BASE_COMPLETED + completedVisible;
-    return {
-      courses: `${completed}/${TOTAL_TRACKED_COURSES}`,
-      hours: `${120 + completed * 2}h`,
-      certificates: 4 + Math.floor(completed / 2),
-    };
-  }, [courses.length]);
-
-  function logActivity(text) {
-    setActivities((prev) =>
-      [{ id: Date.now(), text, when: "Just now" }, ...prev].slice(0, 6)
-    );
-  }
-
-  function pushNotification(message) {
+  function pushNotification(message){
     setNotification({ message, id: Date.now() });
   }
 
-  // Handles marking a lesson/quiz complete and calculates resulting progress.
-  function applyCourseUnit(course, unitType, unitId) {
-    const collectionName = unitType === "lesson" ? "lessons" : "quizzes";
-    const sourceList = course[collectionName];
-    const target = sourceList.find((item) => item.id === unitId);
-    if (!target || target.done) {
-      return { course, message: null, log: null };
+  async function mutateCourse(courseId, unitType, unitId){
+    setActionPending(true);
+    try {
+      const response = await api(`/dashboard/courses/${courseId}/progress`, {
+        method: "POST",
+        body: { unitType, unitId },
+      });
+      setData(response.dashboard);
+      pushNotification(response.message || "Progress updated");
+    } catch (err) {
+      pushNotification(err.message || "Unable to update course");
+    } finally {
+      setActionPending(false);
     }
-    const updatedCourse = {
-      ...course,
-      [collectionName]: sourceList.map((item) =>
-        item.id === unitId ? { ...item, done: true } : item
-      ),
-    };
-    const totalUnits = updatedCourse.lessons.length + updatedCourse.quizzes.length;
-    const doneUnits =
-      updatedCourse.lessons.filter((lesson) => lesson.done).length +
-      updatedCourse.quizzes.filter((quiz) => quiz.done).length;
-    updatedCourse.pct = Math.round((doneUnits / totalUnits) * 100);
-    if (doneUnits === totalUnits) {
-      return {
-        course: null,
-        message: `${course.title} finished!`,
-        log: `${course.title} completed (all lessons & quizzes)`,
-      };
+  }
+
+  async function handleContinue(courseId){
+    setActionPending(true);
+    try {
+      const response = await api(`/dashboard/courses/${courseId}/continue`, { method: "POST" });
+      setData(response.dashboard);
+      pushNotification(response.message || "Course updated");
+    } catch (err) {
+      pushNotification(err.message || "Unable to continue course");
+    } finally {
+      setActionPending(false);
     }
-    const descriptor = unitType === "lesson" ? "Lesson complete" : "Quiz complete";
-    const logDescriptor = unitType === "lesson" ? "Finished lesson" : "Completed quiz";
-    return {
-      course: updatedCourse,
-      message: `${descriptor}: ${target.title}`,
-      log: `${logDescriptor} "${target.title}" in ${course.title}`,
-    };
   }
 
-  function mutateCourse(courseId, unitType, unitId) {
-    let message = null;
-    let log = null;
-    setCourses((prev) =>
-      prev.flatMap((course) => {
-        if (course.id !== courseId) return [course];
-        const result = applyCourseUnit(course, unitType, unitId);
-        if (!message && result.message) message = result.message;
-        if (!log && result.log) log = result.log;
-        return result.course ? [result.course] : [];
-      })
-    );
-    if (message) pushNotification(message);
-    if (log) logActivity(log);
-  }
-
-  function handleContinue(courseId) {
-    setCourses((prev) =>
-      prev.flatMap((course) => {
-        if (course.id !== courseId) return [course];
-        const pendingLesson = course.lessons.find((lesson) => !lesson.done);
-        const pendingQuiz = pendingLesson
-          ? null
-          : course.quizzes.find((quiz) => !quiz.done);
-        const target = pendingLesson || pendingQuiz;
-        if (!target) {
-          pushNotification(`${course.title} already completed`);
-          logActivity(`${course.title} already complete`);
-          return [];
-        }
-        const result = applyCourseUnit(
-          course,
-          pendingLesson ? "lesson" : "quiz",
-          target.id
-        );
-        if (result.message) pushNotification(result.message);
-        if (result.log) logActivity(result.log);
-        return result.course ? [result.course] : [];
-      })
-    );
-  }
-
-  function handleViewAll() {
-    const pending = courses.filter((c) => c.pct < 100).length;
+  function handleViewAll(){
+    const pending = courses.filter((course) => course.pct < 100).length;
     const message = pending
       ? `${pending} courses still in progress`
       : "Great! All courses completed";
     pushNotification(message);
-    logActivity(message);
   }
 
-  function selectTopic(topicId) {
+  function selectTopic(topicId){
     setActiveTopicId(topicId);
-    const topic = topicSeed.find((t) => t.id === topicId);
-    if (topic) {
+    const topic = topics.find((t) => t.id === topicId);
+    if (topic){
       pushNotification(`${topic.name} resources loaded`);
-      logActivity(`Viewing ${topic.name} resources`);
     }
   }
 
-  function handleTopicResource(topic, kind, title) {
+  function handleTopicResource(topic, kind, title){
     const label = kind === "lesson" ? "Lesson" : "Quiz";
     pushNotification(`${label} ready: ${title}`);
-    logActivity(`${label} "${title}" opened in ${topic.name}`);
   }
 
-  function startRecommendation(id) {
-    let startedLabel = null;
-    setRecommendations((prev) =>
-      prev.map((rec) => {
-        if (rec.id !== id) return rec;
-        startedLabel = rec.label;
-        return { ...rec, started: true };
-      })
-    );
-    if (startedLabel) {
-      pushNotification(`${startedLabel} added to plan`);
-      logActivity(`Started recommended path: ${startedLabel}`);
+  async function startRecommendation(id){
+    setActionPending(true);
+    try {
+      const response = await api(`/dashboard/recommendations/${id}/start`, { method: "POST" });
+      setData(response.dashboard);
+      pushNotification(response.message || "Recommendation added");
+    } catch (err) {
+      pushNotification(err.message || "Unable to start recommendation");
+    } finally {
+      setActionPending(false);
     }
   }
 
-  function handleRecommendationResource(recId, kind, title) {
+  function handleRecommendationResource(recId, kind, title){
     const rec = recommendations.find((item) => item.id === recId);
     if (!rec) return;
     const label = kind === "lesson" ? "Lesson" : "Quiz";
     pushNotification(`${rec.label}: ${title}`);
-    logActivity(`${label} "${title}" from ${rec.label}`);
+  }
+
+  if (loading){
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-10 text-center text-sm text-gray-500">
+        Loading your dashboard…
+      </div>
+    );
+  }
+
+  if (error){
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-10 text-center">
+        <p className="text-red-600">{error}</p>
+        <button className="btn mt-4" onClick={loadDashboard}>Retry</button>
+      </div>
+    );
   }
 
   return (
@@ -324,7 +171,11 @@ export default function Dashboard() {
                       <div className="h-full bg-black dark:bg-white" style={{ width: `${c.pct}%` }} />
                     </div>
                   </div>
-                  <button className="btn btn-ghost" onClick={() => handleContinue(c.id)}>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => handleContinue(c.id)}
+                    disabled={actionPending}
+                  >
                     Continue
                   </button>
                 </div>
@@ -341,6 +192,7 @@ export default function Dashboard() {
                             <button
                               className="text-xs underline"
                               onClick={() => mutateCourse(c.id, "lesson", lesson.id)}
+                              disabled={actionPending}
                             >
                               Start
                             </button>
@@ -361,6 +213,7 @@ export default function Dashboard() {
                             <button
                               className="text-xs underline"
                               onClick={() => mutateCourse(c.id, "quiz", quiz.id)}
+                              disabled={actionPending}
                             >
                               Take
                             </button>
@@ -391,23 +244,29 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {topicSeed.map((t) => (
-              <button
-                key={t.id}
-                className={`border rounded-xl p-4 flex items-center gap-3 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${
-                  activeTopicId === t.id
-                    ? "border-black bg-gray-50 dark:border-white/70 dark:bg-gray-800"
-                    : ""
-                }`}
-                onClick={() => selectTopic(t.id)}
-              >
-                <span className="h-8 w-8 rounded-lg bg-gray-100 grid place-items-center dark:bg-gray-800">📚</span>
-                <div>
-                  <div className="font-medium">{t.name}</div>
-                  <div className="text-xs text-gray-600">{t.courses} courses</div>
-                </div>
-              </button>
-            ))}
+            {topics.length === 0 ? (
+              <div className="col-span-full rounded-lg border border-dashed p-4 text-center text-sm text-gray-500">
+                Topic catalog coming soon
+              </div>
+            ) : (
+              topics.map((t) => (
+                <button
+                  key={t.id}
+                  className={`border rounded-xl p-4 flex items-center gap-3 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 ${
+                    activeTopicId === t.id
+                      ? "border-black bg-gray-50 dark:border-white/70 dark:bg-gray-800"
+                      : ""
+                  }`}
+                  onClick={() => selectTopic(t.id)}
+                >
+                  <span className="h-8 w-8 rounded-lg bg-gray-100 grid place-items-center dark:bg-gray-800">📚</span>
+                  <div>
+                    <div className="font-medium">{t.name}</div>
+                    <div className="text-xs text-gray-600">{t.courses} courses</div>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
           {activeTopic && (
             <div className="mt-4 rounded-xl border p-4">
@@ -497,9 +356,9 @@ export default function Dashboard() {
                 <button
                   className="btn btn-ghost"
                   onClick={() => startRecommendation(rec.id)}
-                  disabled={rec.started}
+                  disabled={rec.started || actionPending}
                 >
-                  {rec.started ? "Added" : "Start"}
+                  {rec.started ? "Added" : actionPending ? "Working…" : "Start"}
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">

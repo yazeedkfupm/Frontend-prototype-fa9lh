@@ -10,7 +10,14 @@ import NotFound from "./pages/NotFound";
 import AppProvider, { useApp } from "./context/AppContext";
 
 function Protected({ children }){
-  const { user } = useApp();
+  const { user, ready } = useApp();
+  if (!ready){
+    return (
+      <div className="flex items-center justify-center py-10 text-sm text-gray-500">
+        Checking your session…
+      </div>
+    );
+  }
   if (!user) return <Navigate to="/sign" replace />;
   return children;
 }

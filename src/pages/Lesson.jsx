@@ -1,20 +1,57 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useApp } from "../context/AppContext";
+
+const LESSON_ID = "lesson-js-variables";
 
 export default function Lesson() {
   const navigate = useNavigate();
+  const { api } = useApp();
   const [bookmark, setBookmark] = useState(false);
   const [challenge, setChallenge] = useState({ name: "", age: "", email: "", active: false });
   const [challengeResult, setChallengeResult] = useState(null);
   const [progress, setProgress] = useState(25);
+  const [lesson, setLesson] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const lessonMeta = useMemo(() => ({
-    current: 3,
-    total: 12,
-  }), []);
+  const loadLesson = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api(`/lessons/${LESSON_ID}`);
+      setLesson(response.lesson);
+      setProgress(response.progress?.percent ?? 25);
+      setBookmark(Boolean(response.progress?.bookmarked));
+    } catch (err) {
+      setError(err.message || "Failed to load lesson");
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    loadLesson();
+  }, [loadLesson]);
+
+  const persistProgress = useCallback(async (nextProgress, nextBookmark) => {
+    try {
+      await api(`/lessons/${LESSON_ID}/progress`, {
+        method: "POST",
+        body: { percent: nextProgress, bookmarked: nextBookmark },
+      });
+    } catch (err) {
+      // keep UI responsive even if persistence fails
+      console.error(err);
+    }
+  }, [api]);
 
   function toggleBookmark(){
-    setBookmark((prev) => !prev);
+    setBookmark((prev) => {
+      const next = !prev;
+      persistProgress(progress, next);
+      return next;
+    });
   }
 
   function handleChallengeChange(evt){
@@ -35,44 +72,67 @@ export default function Lesson() {
   }
 
   function handleProgress(delta){
-    setProgress((prev) => Math.max(0, Math.min(100, prev + delta)));
+    setProgress((prev) => {
+      const next = Math.max(0, Math.min(100, prev + delta));
+      persistProgress(next, bookmark);
+      return next;
+    });
+  }
+
+  if (loading){
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-6 text-center text-sm text-gray-500">
+        Loading lesson…
+      </div>
+    );
+  }
+
+  if (error){
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-6 text-center">
+        <p className="text-red-600">{error}</p>
+        <button className="btn mt-4" onClick={loadLesson}>Retry</button>
+      </div>
+    );
+  }
+
+  if (!lesson){
+    return null;
   }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
-      <nav className="text-sm text-gray-600">Courses › JavaScript Fundamentals › <span className="text-gray-900">Variables and Data Types</span></nav>
+      <nav className="text-sm text-gray-600">
+        {lesson.breadcrumb.join(" › ")} › <span className="text-gray-900">{lesson.title}</span>
+      </nav>
       <div className="mt-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Variables and Data Types</h1>
-        <span className="text-xs border rounded-full px-2 py-1">Lesson {lessonMeta.current} of {lessonMeta.total}</span>
+        <h1 className="text-2xl font-bold">{lesson.title}</h1>
+        <span className="text-xs border rounded-full px-2 py-1">Lesson {lesson.order.current} of {lesson.order.total}</span>
       </div>
-      <div className="text-sm text-gray-600 mt-1">15 min read • Beginner</div>
+      <div className="text-sm text-gray-600 mt-1">{lesson.duration} • {lesson.level}</div>
 
       <section className="mt-6 card p-4">
-        <h2 className="font-semibold mb-2">Understanding Variables</h2>
-        <p>Variables store data values and can be declared using <code>let</code>, <code>const</code>, or <code>var</code>.</p>
-        <div className="mt-4">
-          <div className="text-xs text-gray-600 mb-1">Code Example</div>
-          <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-auto">
-{`let userName = "John Doe";
-const userAge = 25;
-var isActive = true;
-console.log(userName); // Output: John Doe`}
-          </pre>
-        </div>
-        <div className="mt-4 grid sm:grid-cols-2 gap-3">
-          <div className="card p-3">
-            <div className="font-medium mb-1">Primitive Types</div>
-            <ul className="text-sm list-disc ml-5">
-              <li>String</li><li>Number</li><li>Boolean</li><li>Undefined</li><li>Null</li>
-            </ul>
+        {lesson.blocks.map((block, index) => (
+          <div key={index} className="mb-6 last:mb-0">
+            <h2 className="font-semibold mb-2">{block.heading}</h2>
+            {block.copy && <p>{block.copy}</p>}
+            {block.code && (
+              <div className="mt-4">
+                <div className="text-xs text-gray-600 mb-1">Code Example</div>
+                <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-auto">
+{block.code}
+                </pre>
+              </div>
+            )}
+            {block.list && (
+              <ul className="mt-4 text-sm list-disc ml-5 space-y-1">
+                {block.list.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
           </div>
-          <div className="card p-3">
-            <div className="font-medium mb-1">Complex Types</div>
-            <ul className="text-sm list-disc ml-5">
-              <li>Object</li><li>Array</li><li>Function</li><li>Date</li>
-            </ul>
-          </div>
-        </div>
+        ))}
         <div className="mt-6 card p-6 bg-gray-800 text-gray-100 text-center">
           <div className="text-lg">Variable Declaration Flowchart</div>
           <div className="text-xs opacity-75">Interactive diagram placeholder</div>
@@ -82,7 +142,7 @@ console.log(userName); // Output: John Doe`}
           <div className="font-semibold">Try It Yourself</div>
           <p className="text-sm text-gray-600">Practice declaring variables with different data types.</p>
           <div className="mt-3 border rounded-md p-3 text-sm bg-gray-50">
-            Challenge: Create variables for a user profile including name, age, email, and active status.
+            Challenge: {lesson.challenge.prompt}
           </div>
           <form className="mt-4 grid sm:grid-cols-2 gap-4 text-sm" onSubmit={(e)=>e.preventDefault()}>
             <label className="block">
