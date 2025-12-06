@@ -39,7 +39,8 @@ export default function Sign() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const navigate = useNavigate();
-  const { user, signIn, signUp } = useApp();
+  const { user, signIn, signUp, theme, toggleTheme } = useApp();
+  const isDark = theme === "dark";
 
   useEffect(() => {
     if (user) {
@@ -83,7 +84,18 @@ export default function Sign() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-10">
+    <div className="max-w-md mx-auto px-4 py-10 relative">
+      <button
+        type="button"
+        className="btn btn-ghost px-2 absolute right-4 top-4"
+        aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
+        title={`Switch to ${isDark ? "light" : "dark"} mode`}
+        onClick={toggleTheme}
+      >
+        <span className="text-lg" aria-hidden>
+          {isDark ? "☀️" : "🌙"}
+        </span>
+      </button>
       <h1 className="text-3xl font-semibold text-center">fa9lh</h1>
       <p className="text-gray-600 text-center">Learn smarter, achieve more</p>
 
