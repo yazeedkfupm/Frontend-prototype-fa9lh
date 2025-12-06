@@ -100,7 +100,8 @@ export default function Admin() {
         method: "POST",
         body: { decision },
       });
-      setApprovals((prev) => prev.filter((item) => item.id !== Number(id)));
+      const normalizedId = String(id);
+      setApprovals((prev) => prev.filter((item) => String(item.id) !== normalizedId));
       setNotification(response.message);
     } catch (err) {
       setNotification(err.message || "Unable to update approval");
@@ -108,6 +109,45 @@ export default function Admin() {
       setActionPending(false);
     }
   }
+
+  const renderApprovalDetails = useCallback((item) => {
+    if (!item.details) {
+      return (
+        <div className="h-24 bg-gray-100 rounded-lg grid place-items-center text-gray-500">
+          Preview
+        </div>
+      );
+    }
+    if (item.details.kind === "lesson") {
+      return (
+        <div className="border rounded-lg p-3 text-sm bg-gray-50">
+          <div className="font-medium">{item.details.title}</div>
+          <div className="text-xs text-gray-500">{item.details.course || "Unassigned"}</div>
+          <p className="mt-1 text-xs text-gray-500">Status: {item.details.status}</p>
+        </div>
+      );
+    }
+    if (item.details.kind === "quiz") {
+      return (
+        <div className="border rounded-lg p-3 text-sm bg-gray-50">
+          <div className="font-medium">{item.details.title}</div>
+          <div className="text-xs text-gray-500">{item.details.course || "Unassigned"}</div>
+          <p className="mt-1 text-xs text-gray-500">Questions: {item.details.questions}</p>
+        </div>
+      );
+    }
+    if (item.details.kind === "category") {
+      return (
+        <div className="border rounded-lg p-3 text-sm bg-amber-50 border-amber-200">
+          <div className="font-medium">{item.details.name}</div>
+          <p className="mt-1 text-xs text-gray-700">{item.details.description}</p>
+        </div>
+      );
+    }
+    return (
+      <div className="h-24 bg-gray-100 rounded-lg grid place-items-center text-gray-500">Preview</div>
+    );
+  }, []);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 grid md:grid-cols-[240px,1fr] gap-6">
@@ -216,7 +256,7 @@ export default function Admin() {
                     </div>
                     <span className="text-xs border rounded-full px-2 py-1">{item.type}</span>
                   </div>
-                  <div className="mt-3 h-24 bg-gray-100 rounded-lg grid place-items-center text-gray-500">Preview</div>
+                  <div className="mt-3">{renderApprovalDetails(item)}</div>
                   <div className="mt-3 flex gap-2">
                     <button className="btn btn-primary" onClick={()=>handleDecision(item.id, 'approved')} disabled={actionPending}>✓ Approve</button>
                     <button className="btn" onClick={()=>handleDecision(item.id, 'rejected')} disabled={actionPending}>✕ Reject</button>

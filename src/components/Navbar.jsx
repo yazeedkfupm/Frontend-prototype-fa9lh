@@ -4,7 +4,7 @@ import ProfileMenu from "./ProfileMenu";
 
 export default function Navbar() {
   const { pathname } = useLocation();
-  const { user, signOut, theme, toggleTheme } = useApp();
+  const { user, signOut, theme, toggleTheme, canManageContent, isAdmin } = useApp();
   const isDark = theme === "dark";
 
   const nav = (to, label) => (
@@ -32,7 +32,8 @@ export default function Navbar() {
           {nav("/dashboard", "Home")}
           {nav("/quiz", "Quizzes")}
           {nav("/lesson", "Progress")}
-          {nav("/admin", "Admin")}
+          {canManageContent && nav("/instructor", "Studio")}
+          {isAdmin && nav("/admin", "Admin")}
         </nav>
         <div className="ml-auto flex items-center gap-2">
           {!user ? (

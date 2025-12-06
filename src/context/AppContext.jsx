@@ -77,6 +77,18 @@ export default function AppProvider({ children }){
   }, [theme]);
 
   const token = session?.token;
+  const role = session?.user?.role ?? null;
+  const isAdmin = role === "admin";
+  const isInstructor = role === "instructor";
+  const isStudent = role === "student";
+  const canManageContent = isAdmin || isInstructor;
+
+  const hasRole = useCallback((allowedRoles = []) => {
+    if (!allowedRoles.length) {
+      return Boolean(role);
+    }
+    return allowedRoles.includes(role);
+  }, [role]);
 
   useEffect(() => {
     let mounted = true;
@@ -139,6 +151,12 @@ export default function AppProvider({ children }){
   const value = useMemo(() => ({
     user: session?.user || null,
     token,
+    role,
+    isAdmin,
+    isInstructor,
+    isStudent,
+    canManageContent,
+    hasRole,
     signIn,
     signUp,
     signOut,
@@ -146,7 +164,7 @@ export default function AppProvider({ children }){
     toggleTheme,
     api,
     ready,
-  }), [session, token, signIn, signUp, signOut, theme, api, ready]);
+  }), [session, token, role, isAdmin, isInstructor, isStudent, canManageContent, hasRole, signIn, signUp, signOut, theme, api, ready]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

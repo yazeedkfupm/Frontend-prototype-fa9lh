@@ -4,7 +4,7 @@ const {
   updateUserStatus,
   getApprovals,
   resolveApproval,
-} = require('../data/db');
+} = require('../data/store');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { assertEnum } = require('../utils/validation');
 
@@ -13,28 +13,42 @@ const router = express.Router();
 router.use(authenticate());
 router.use(requireAdmin);
 
-router.get('/users', (req, res) => {
-  res.json({ users: getAdminUsers() });
+router.get('/users', async (req, res, next) => {
+  try {
+    const users = await getAdminUsers();
+    res.json({ users });
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.patch('/users/:id', (req, res, next) => {
+router.patch('/users/:id', async (req, res, next) => {
   try {
     const status = assertEnum(req.body?.status, 'status', ['Active', 'Pending', 'Suspended']);
-    const user = updateUserStatus(req.params.id, status);
+    const user = await updateUserStatus(req.params.id, status);
     res.json({ user });
   } catch (error) {
     next(error);
   }
 });
 
-router.get('/approvals', (req, res) => {
-  res.json({ approvals: getApprovals() });
+router.get('/approvals', async (req, res, next) => {
+  try {
+    const approvals = await getApprovals();
+    res.json({ approvals });
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.post('/approvals/:id/decision', (req, res, next) => {
+router.post('/approvals/:id/decision', async (req, res, next) => {
   try {
     const decision = assertEnum(req.body?.decision, 'decision', ['approved', 'rejected']);
-    const item = resolveApproval(req.params.id);
+    const rawId = req.params.id;
+    const numericId = Number(rawId);
+    const identifier = Number.isNaN(numericId) ? rawId : numericId;
+    const adminId = req.user._id || req.user.id;
+    const item = await resolveApproval(identifier, decision, adminId);
     res.json({
       item,
       message: `${item.author}'s ${item.type.toLowerCase()} ${decision}.`,

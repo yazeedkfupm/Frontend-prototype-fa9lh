@@ -16,6 +16,8 @@ Admin console (overview metrics, user list, content approvals)
 
 Dark mode toggle (persisted per user) — icon next to the Sign out button with auto detection of system preference
 
+Instructor-focused additions now include a lesson feedback loop (students can rate/comment, instructors see the full feed), a shared workspace that lets multiple instructors collaborate on drafts with threaded notes, and a category suggestion workflow so instructors can propose new taxonomy entries for admin review.
+
 Create React App (React 18, React Router 6)
 
 Tailwind CSS via PostCSS
@@ -42,6 +44,18 @@ npm start
 ```
 
 Environment-specific overrides can be passed via a `.env` (loaded by your process manager) or inline when starting the server, e.g. `PORT=5000 JWT_SECRET=supersecret npm run dev`.
+
+### Database (MongoDB)
+
+1. Ensure MongoDB is running locally (default URI `mongodb://127.0.0.1:27017/fa9lh`).
+2. Copy `server/.env.example` to `server/.env` and tweak values if you use a different cluster.
+3. Seed the database (clears all collections, then inserts default users/content):
+
+```bash
+npm run seed
+```
+
+> Re-run the seed whenever you need a clean slate; it is safe because it wipes the collections first.
 
 > Tip: keep one terminal running `npm run api` and another running `npm start` so the client always points at the live API.
 
@@ -88,6 +102,7 @@ postcss.config.js
 ### Default Accounts
 - Student: `student@gmail.com` / `password123`
 - Admin: `admin@gmail.com` / `password123`
+- Instructor: `instructor@gmail.com` / `password123`
 
 ## Environment Variables
 
@@ -97,8 +112,10 @@ postcss.config.js
 | `CLIENT_ORIGIN` | `http://localhost:3000` | Comma-separated list of allowed CORS origins. |
 | `JWT_SECRET` | `dev-secret` | Secret used to sign/verify access tokens. Set to a long, random value in production. |
 | `REACT_APP_API_URL` | `http://localhost:4000` (frontend) | React client base URL for API requests. Must be prefixed with `REACT_APP_` to be embedded at build time. |
+| `MONGO_URI` | `mongodb://127.0.0.1:27017/fa9lh` | Connection string for MongoDB. |
+| `MONGO_DB_NAME` | `fa9lh` | Optional override when sharing a cluster across projects. |
 
-Optional database connection variables can be added later; the current demo uses in-memory stores.
+MongoDB is now required; run it before the API or the server will refuse to boot.
 
 ## REST API Overview
 The Express API lives under `server/` and exposes the following authenticated routes (all prefixed with `/api`). The React app reads `REACT_APP_API_URL` (default `http://localhost:4000`) to know where to send requests.
@@ -114,8 +131,17 @@ The Express API lives under `server/` and exposes the following authenticated ro
 |  | `POST /dashboard/recommendations/:id/start` | Track recommendation start |
 | Lessons | `GET /lessons/:lessonId` | Retrieve lesson content + progress |
 |  | `POST /lessons/:lessonId/progress` | Persist lesson bookmark/progress |
+|  | `GET /lessons/:lessonId/feedback` | List shared feedback for the authenticated learner |
+|  | `POST /lessons/:lessonId/feedback` | Submit rating/comments for a lesson |
 | Quizzes | `GET /quizzes/:quizId` | Fetch quiz questions/explanations |
 |  | `POST /quizzes/:quizId/submit` | Score answers and update progress |
+| Instructor | `GET /instructor/lessons/:id/feedback` | Instructors fetch all lesson feedback they own/collaborate on |
+|  | `GET /instructor/workspaces` | List shared workspaces the instructor belongs to |
+|  | `POST /instructor/workspaces` | Create a workspace tied to a lesson and invite collaborators |
+|  | `POST /instructor/workspaces/:id/collaborators` | Invite another instructor via email |
+|  | `DELETE /instructor/workspaces/:id/collaborators/:memberId` | Remove a collaborator from a workspace |
+|  | `POST /instructor/workspaces/:id/threads` | Append a collaboration note/comment thread |
+|  | `POST /instructor/categories/suggestions` | Submit a new category proposal for approval |
 | Admin | `GET /admin/users` | List users (admin only) |
 |  | `PATCH /admin/users/:id` | Update user status |
 |  | `GET /admin/approvals` | Pending content submissions |

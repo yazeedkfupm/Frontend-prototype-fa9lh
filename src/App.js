@@ -6,11 +6,12 @@ import Dashboard from "./pages/Dashboard";
 import Lesson from "./pages/Lesson";
 import Quiz from "./pages/Quiz";
 import Admin from "./pages/Admin";
+import Instructor from "./pages/Instructor";
 import NotFound from "./pages/NotFound";
 import AppProvider, { useApp } from "./context/AppContext";
 
-function Protected({ children }){
-  const { user, ready } = useApp();
+function Protected({ children, roles }){
+  const { user, ready, hasRole } = useApp();
   if (!ready){
     return (
       <div className="flex items-center justify-center py-10 text-sm text-gray-500">
@@ -19,6 +20,9 @@ function Protected({ children }){
     );
   }
   if (!user) return <Navigate to="/sign" replace />;
+  if (roles && roles.length && !hasRole(roles)){
+    return <Navigate to="/dashboard" replace />;
+  }
   return children;
 }
 
@@ -40,8 +44,11 @@ export default function App() {
             <Route path="/quiz" element={
               <Protected><Quiz /></Protected>
             } />
+            <Route path="/instructor" element={
+              <Protected roles={["instructor", "admin"]}><Instructor /></Protected>
+            } />
             <Route path="/admin" element={
-              <Protected><Admin /></Protected>
+              <Protected roles={["admin"]}><Admin /></Protected>
             } />
             <Route path="*" element={<NotFound />} />
           </Routes>

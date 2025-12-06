@@ -8,6 +8,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const lessonRoutes = require('./routes/lessons');
 const quizRoutes = require('./routes/quizzes');
 const adminRoutes = require('./routes/admin');
+const instructorRoutes = require('./routes/instructor');
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/lessons', lessonRoutes);
 app.use('/api/quizzes', quizRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/instructor', instructorRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not Found' });

@@ -1,5 +1,5 @@
 const { verifyToken } = require('../utils/tokens');
-const { findUserById, sanitizeUser } = require('../data/db');
+const { findUserById, sanitizeUser } = require('../data/store');
 
 function extractToken(req) {
   const header = req.headers.authorization || '';
@@ -13,40 +13,50 @@ function extractToken(req) {
 }
 
 function authenticate(optional = false) {
-  return (req, res, next) => {
-    const token = extractToken(req);
-    if (!token) {
-      if (optional) {
-        return next();
+  return async (req, res, next) => {
+    try {
+      const token = extractToken(req);
+      if (!token) {
+        if (optional) {
+          return next();
+        }
+        return res.status(401).json({ message: 'Authentication required' });
       }
-      return res.status(401).json({ message: 'Authentication required' });
-    }
-    const payload = verifyToken(token);
-    if (!payload) {
-      if (optional) {
-        return next();
+      const payload = verifyToken(token);
+      if (!payload) {
+        if (optional) {
+          return next();
+        }
+        return res.status(401).json({ message: 'Invalid or expired token' });
       }
-      return res.status(401).json({ message: 'Invalid or expired token' });
+      const user = await findUserById(payload.sub);
+      if (!user) {
+        return res.status(401).json({ message: 'User not found' });
+      }
+      req.user = user;
+      req.token = token;
+      next();
+    } catch (error) {
+      next(error);
     }
-    const user = findUserById(payload.sub);
-    if (!user) {
-      return res.status(401).json({ message: 'User not found' });
-    }
-    req.user = user;
-    req.token = token;
-    next();
   };
 }
 
-function requireAdmin(req, res, next) {
-  if (!req.user) {
-    return res.status(401).json({ message: 'Authentication required' });
-  }
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Admin privileges required' });
-  }
-  return next();
+function requireRoles(...roles) {
+  const allowed = new Set(roles);
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    if (allowed.size === 0 || allowed.has(req.user.role)) {
+      return next();
+    }
+    return res.status(403).json({ message: 'Insufficient permissions' });
+  };
 }
+
+const requireAdmin = requireRoles('admin');
+const requireInstructor = requireRoles('instructor', 'admin');
 
 function currentUser(req) {
   return sanitizeUser(req.user);
@@ -55,5 +65,7 @@ function currentUser(req) {
 module.exports = {
   authenticate,
   requireAdmin,
+  requireInstructor,
+  requireRoles,
   currentUser,
 };
